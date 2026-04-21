@@ -40,6 +40,83 @@
         </div>
       </header>
 
+      <section class="panel admin-panel">
+        <div class="panel-header">
+          <h2>Админка ввода</h2>
+          <p>С телефона можно войти по PIN, вбить рабочие подходы и сразу сохранить их в Excel.</p>
+        </div>
+        <div class="admin-shell">
+          <div id="adminStatus" class="admin-state admin-state--muted">Админ-режим выключен.</div>
+
+          <div id="adminAuth" class="admin-auth">
+            <label class="control">
+              <span>PIN админа</span>
+              <input
+                id="adminPinInput"
+                type="password"
+                inputmode="numeric"
+                autocomplete="current-password"
+                placeholder="1111"
+              />
+            </label>
+            <button id="adminLoginButton" class="primary-button">Войти</button>
+          </div>
+
+          <div id="adminEditor" class="admin-editor" hidden>
+            <div class="admin-grid">
+              <label class="control">
+                <span>День</span>
+                <select id="adminSheetSelect"></select>
+              </label>
+              <label class="control">
+                <span>Упражнение</span>
+                <select id="adminExerciseSelect"></select>
+              </label>
+              <label class="control">
+                <span>Месяц</span>
+                <select id="adminMonthSelect"></select>
+              </label>
+            </div>
+
+            <div id="adminEntryMeta" class="admin-entry-meta"></div>
+
+            <div class="set-grid">
+              <div class="set-inputs">
+                <strong>Подход 1</strong>
+                <input id="adminWeight1" type="number" inputmode="decimal" step="0.5" min="0" placeholder="Вес" />
+                <input id="adminReps1" type="number" inputmode="numeric" min="0" placeholder="Повторы" />
+              </div>
+              <div class="set-inputs">
+                <strong>Подход 2</strong>
+                <input id="adminWeight2" type="number" inputmode="decimal" step="0.5" min="0" placeholder="Вес" />
+                <input id="adminReps2" type="number" inputmode="numeric" min="0" placeholder="Повторы" />
+              </div>
+              <div class="set-inputs">
+                <strong>Подход 3</strong>
+                <input id="adminWeight3" type="number" inputmode="decimal" step="0.5" min="0" placeholder="Вес" />
+                <input id="adminReps3" type="number" inputmode="numeric" min="0" placeholder="Повторы" />
+              </div>
+              <div class="set-inputs">
+                <strong>Подход 4</strong>
+                <input id="adminWeight4" type="number" inputmode="decimal" step="0.5" min="0" placeholder="Вес" />
+                <input id="adminReps4" type="number" inputmode="numeric" min="0" placeholder="Повторы" />
+              </div>
+            </div>
+
+            <label class="control">
+              <span>Заметка</span>
+              <textarea id="adminNotesInput" rows="3" placeholder="Например: Нет записи в отчете за месяц 2."></textarea>
+            </label>
+
+            <div class="button-row">
+              <button id="adminSaveButton" class="primary-button">Сохранить в Excel</button>
+              <button id="adminResetButton" class="ghost-button">Сбросить форму</button>
+              <button id="adminLogoutButton" class="ghost-button">Выйти</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="summary" class="summary-grid"></section>
 
       <section class="panel">

@@ -95,7 +95,11 @@ h1 {
 }
 
 select,
+textarea,
+input[type="number"],
+input[type="password"],
 input[type="search"],
+.primary-button,
 .ghost-button {
   border: 1px solid var(--line);
   background: #fff;
@@ -105,9 +109,23 @@ input[type="search"],
   font-size: 15px;
 }
 
+.primary-button,
 .ghost-button {
   cursor: pointer;
   font-weight: 700;
+}
+
+textarea,
+input[type="number"],
+input[type="password"] {
+  width: 100%;
+  border-radius: 18px;
+  font-family: inherit;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 92px;
 }
 
 input[type="search"] {
@@ -138,7 +156,8 @@ input[type="search"] {
 .stat-card,
 .heavy-card,
 .exercise-card,
-.table-card {
+.table-card,
+.admin-shell {
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -166,6 +185,93 @@ input[type="search"] {
 .panel {
   padding: 24px;
   margin-bottom: 24px;
+}
+
+.admin-shell {
+  padding: 18px;
+}
+
+.admin-auth,
+.admin-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-auth {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.set-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.set-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.set-inputs strong {
+  grid-column: 1 / -1;
+  font-size: 14px;
+}
+
+.admin-state {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-weight: 700;
+}
+
+.admin-state--muted {
+  background: rgba(120, 113, 108, 0.08);
+  color: var(--muted);
+}
+
+.admin-state--up {
+  background: rgba(15, 118, 110, 0.12);
+  color: var(--accent);
+}
+
+.admin-state--flat {
+  background: rgba(180, 83, 9, 0.12);
+  color: var(--accent-warm);
+}
+
+.admin-state--down {
+  background: rgba(185, 28, 28, 0.12);
+  color: #b91c1c;
+}
+
+.admin-entry-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #0f766e, #115e59);
+  color: #fff;
+  border-color: transparent;
+}
+
+.primary-button:disabled,
+.ghost-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .panel-header {
@@ -438,6 +544,10 @@ code {
 
 @media (max-width: 980px) {
   .hero,
+  .admin-auth,
+  .admin-grid,
+  .admin-entry-meta,
+  .set-grid,
   .day-grid,
   .heavy-grid,
   .summary-grid,

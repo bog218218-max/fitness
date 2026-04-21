@@ -1,7 +1,14 @@
+const ADMIN_TOKEN_KEY = 'fitness_admin_token';
+
 const state = {
   dashboard: null,
   currentMonthFilter: 'latest',
   compareMonthFilter: 'previous',
+  adminToken: localStorage.getItem(ADMIN_TOKEN_KEY),
+  adminAuthenticated: false,
+  adminSheet: '',
+  adminExercise: '',
+  adminMonth: '',
 };
 
 const elements = {
@@ -14,6 +21,21 @@ const elements = {
   expandAllButton: document.getElementById('expandAllButton'),
   collapseAllButton: document.getElementById('collapseAllButton'),
   refreshButton: document.getElementById('refreshButton'),
+  adminStatus: document.getElementById('adminStatus'),
+  adminAuth: document.getElementById('adminAuth'),
+  adminEditor: document.getElementById('adminEditor'),
+  adminPinInput: document.getElementById('adminPinInput'),
+  adminLoginButton: document.getElementById('adminLoginButton'),
+  adminSheetSelect: document.getElementById('adminSheetSelect'),
+  adminExerciseSelect: document.getElementById('adminExerciseSelect'),
+  adminMonthSelect: document.getElementById('adminMonthSelect'),
+  adminEntryMeta: document.getElementById('adminEntryMeta'),
+  adminNotesInput: document.getElementById('adminNotesInput'),
+  adminSaveButton: document.getElementById('adminSaveButton'),
+  adminResetButton: document.getElementById('adminResetButton'),
+  adminLogoutButton: document.getElementById('adminLogoutButton'),
+  adminWeightInputs: [1, 2, 3, 4].map((index) => document.getElementById(`adminWeight${index}`)),
+  adminRepsInputs: [1, 2, 3, 4].map((index) => document.getElementById(`adminReps${index}`)),
 };
 
 elements.currentMonthFilter.addEventListener('change', (event) => {
@@ -40,6 +62,52 @@ elements.collapseAllButton.addEventListener('click', () => {
 
 elements.refreshButton.addEventListener('click', async () => {
   await loadDashboard();
+});
+
+elements.adminLoginButton.addEventListener('click', async () => {
+  await loginAdmin();
+});
+
+elements.adminPinInput.addEventListener('keydown', async (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    await loginAdmin();
+  }
+});
+
+elements.adminSheetSelect.addEventListener('change', (event) => {
+  state.adminSheet = event.target.value;
+  syncAdminSelections();
+  renderAdmin();
+});
+
+elements.adminExerciseSelect.addEventListener('change', (event) => {
+  state.adminExercise = event.target.value;
+  syncAdminSelections();
+  renderAdmin();
+});
+
+elements.adminMonthSelect.addEventListener('change', (event) => {
+  state.adminMonth = event.target.value;
+  renderAdminForm();
+});
+
+elements.adminSaveButton.addEventListener('click', async () => {
+  await saveAdminEntry();
+});
+
+elements.adminResetButton.addEventListener('click', () => {
+  renderAdminForm();
+  setAdminStatus('Форма возвращена к текущим данным из Excel.', 'muted');
+});
+
+elements.adminLogoutButton.addEventListener('click', () => {
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+  state.adminToken = null;
+  state.adminAuthenticated = false;
+  elements.adminPinInput.value = '';
+  renderAdmin();
+  setAdminStatus('Админ-режим выключен.', 'muted');
 });
 
 function formatNumber(value) {
@@ -84,7 +152,7 @@ function getMonthLabel(month) {
   if (!state.dashboard || !month) return `Месяц ${month}`;
   for (const sheet of Object.values(state.dashboard.reports)) {
     for (const exercise of sheet.exercises) {
-      const entry = loggedEntries(exercise.entries).find((item) => Number(item.month) === Number(month));
+      const entry = exercise.entries.find((item) => Number(item.month) === Number(month));
       if (entry?.date) {
         return `Месяц ${month} · ${entry.date}`;
       }
@@ -117,8 +185,9 @@ function getSelectedCompareMonth(currentMonth) {
   return value === currentMonth ? null : value;
 }
 
-function getEntryByMonth(exercise, month) {
-  return loggedEntries(exercise.entries).find((entry) => Number(entry.month) === Number(month)) || null;
+function getEntryByMonth(exercise, month, loggedOnly = true) {
+  const entries = loggedOnly ? loggedEntries(exercise.entries) : exercise.entries;
+  return entries.find((entry) => Number(entry.month) === Number(month)) || null;
 }
 
 function percentDelta(currentValue, previousValue) {
@@ -235,10 +304,10 @@ function renderSummary() {
 
   sheets.forEach((sheet) => {
     sheet.exercises.forEach((exercise) => {
-      const currentEntry = getEntryByMonth(exercise, currentMonth);
+      const currentEntry = getEntryByMonth(exercise, currentMonth, true);
       if (!currentEntry) return;
       visibleCount += 1;
-      const status = getProgressStatus(currentEntry, getEntryByMonth(exercise, compareMonth));
+      const status = getProgressStatus(currentEntry, getEntryByMonth(exercise, compareMonth, true));
       if (status.score > 0) up += 1;
       else if (status.score < 0) down += 1;
       else flat += 1;
@@ -266,8 +335,8 @@ function renderHeavyCards() {
 
   heavyExercises.forEach(({ day, exercise }) => {
     const allEntries = loggedEntries(exercise.entries);
-    const currentEntry = getEntryByMonth(exercise, currentMonth);
-    const previousEntry = getEntryByMonth(exercise, compareMonth);
+    const currentEntry = getEntryByMonth(exercise, currentMonth, true);
+    const previousEntry = getEntryByMonth(exercise, compareMonth, true);
     const status = getProgressStatus(currentEntry, previousEntry);
 
     const card = document.createElement('article');
@@ -310,28 +379,28 @@ function renderHeavyCards() {
       <div class="compare-strip">
         <div class="compare-box">
           <div class="muted">Сравниваем с</div>
-          <strong>${previousEntry ? previousEntry.summary || formatSets(previousEntry.sets) : '—'}</strong>
+          <strong>${previousEntry ? previousEntry.best_set || previousEntry.summary || formatSets(previousEntry.sets) : '—'}</strong>
           <span class="muted">${previousEntry ? getMonthLabel(previousEntry.month) : 'Нет базового отчета'}</span>
         </div>
         <div class="compare-box compare-box--accent">
           <div class="muted">Текущий отчет</div>
-          <strong>${currentEntry.summary || formatSets(currentEntry.sets)}</strong>
+          <strong>${currentEntry.best_set || currentEntry.summary || formatSets(currentEntry.sets)}</strong>
           <span class="muted">${getMonthLabel(currentEntry.month)}</span>
         </div>
       </div>
       ${buildSparkline(trendValues)}
       <div class="heavy-card__meta">
         <div class="meta-box">
+          <div class="muted">Лучший сет</div>
+          <strong>${currentEntry.best_set || currentEntry.summary || '—'}</strong>
+        </div>
+        <div class="meta-box">
           <div class="muted">Лучший e1RM</div>
           <strong>${formatNumber(currentEntry.estimated_1rm)}</strong>
         </div>
         <div class="meta-box">
-          <div class="muted">Дельта силы</div>
-          <strong>${formatDelta(strengthDelta)}</strong>
-        </div>
-        <div class="meta-box">
-          <div class="muted">Дельта силы %</div>
-          <strong>${strengthPercent === null ? '—' : `${formatDelta(strengthPercent)}%`}</strong>
+          <div class="muted">Дельта e1RM</div>
+          <strong>${strengthPercent === null ? formatDelta(strengthDelta) : `${formatDelta(strengthDelta)} / ${formatDelta(strengthPercent)}%`}</strong>
         </div>
       </div>
     `;
@@ -339,7 +408,7 @@ function renderHeavyCards() {
   });
 
   if (!heavyExercises.length) {
-    elements.heavyCards.append(createEmpty('По текущим фильтрам тяжелые упражнения не найдены.'));
+    elements.heavyCards.append(createEmpty('По текущим фильтрам главные упражнения не найдены.'));
   }
 }
 
@@ -360,7 +429,8 @@ function makeDetailedSetTable(entries) {
       <th>Подход 2</th>
       <th>Подход 3</th>
       <th>Подход 4</th>
-      <th>Итог</th>
+      <th>Лучший сет</th>
+      <th>e1RM</th>
       <th>Заметки</th>
     </tr>
   `;
@@ -369,7 +439,7 @@ function makeDetailedSetTable(entries) {
     const row = document.createElement('tr');
     const setCells = entry.sets.map((setItem) =>
       setItem.weight !== null && setItem.reps !== null
-        ? `${formatNumber(setItem.weight)}x${formatNumber(setItem.reps)}${setItem.rir !== null && setItem.rir !== undefined ? `<br><span class="muted">RIR ${formatNumber(setItem.rir)}</span>` : ''}`
+        ? `${formatNumber(setItem.weight)}x${formatNumber(setItem.reps)}`
         : '—',
     );
     row.innerHTML = `
@@ -378,7 +448,8 @@ function makeDetailedSetTable(entries) {
       <td>${setCells[1] || '—'}</td>
       <td>${setCells[2] || '—'}</td>
       <td>${setCells[3] || '—'}</td>
-      <td>${entry.summary || '—'}</td>
+      <td>${entry.best_set || entry.summary || '—'}</td>
+      <td>${formatNumber(entry.estimated_1rm)}</td>
       <td>${entry.notes || '—'}</td>
     `;
     table.append(row);
@@ -396,13 +467,14 @@ function makeProgressTable(sheet, currentMonth, compareMonth) {
       <th>Статус</th>
       <th>База</th>
       <th>Текущий</th>
+      <th>Лучший сет</th>
       <th>e1RM</th>
     </tr>
   `;
 
   visibleExercises(sheet).forEach((exercise) => {
-    const currentEntry = getEntryByMonth(exercise, currentMonth);
-    const previousEntry = getEntryByMonth(exercise, compareMonth);
+    const currentEntry = getEntryByMonth(exercise, currentMonth, true);
+    const previousEntry = getEntryByMonth(exercise, compareMonth, true);
     const status = getProgressStatus(currentEntry, previousEntry);
 
     const strengthDelta =
@@ -414,8 +486,9 @@ function makeProgressTable(sheet, currentMonth, compareMonth) {
     row.innerHTML = `
       <td>${exercise.title}</td>
       <td>${statusChip(status)}</td>
-      <td>${previousEntry ? previousEntry.summary || formatSets(previousEntry.sets) : '—'}</td>
-      <td>${currentEntry ? currentEntry.summary || formatSets(currentEntry.sets) : '—'}</td>
+      <td>${previousEntry ? previousEntry.best_set || previousEntry.summary || formatSets(previousEntry.sets) : '—'}</td>
+      <td>${currentEntry ? currentEntry.best_set || currentEntry.summary || formatSets(currentEntry.sets) : '—'}</td>
+      <td>${currentEntry ? currentEntry.best_set || currentEntry.summary || '—' : '—'}</td>
       <td>${currentEntry ? formatNumber(currentEntry.estimated_1rm) : '—'}${strengthDelta !== null ? `<br><span class="muted">${formatDelta(strengthDelta)}</span>` : ''}</td>
     `;
     table.append(row);
@@ -429,20 +502,19 @@ function renderDayViews() {
   const currentMonth = getSelectedCurrentMonth();
   const compareMonth = getSelectedCompareMonth(currentMonth);
 
-  Object.values(state.dashboard.reports)
-    .forEach((sheet) => {
-      if (!visibleExercises(sheet).length) return;
-      const wrapper = document.createElement('div');
-      wrapper.className = 'table-card';
-      wrapper.innerHTML = `
-        <div class="table-card__header">
-          <h2>${sheet.title}</h2>
-          <p class="table-note">Сравнение ${getMonthLabel(currentMonth)} с ${compareMonth ? getMonthLabel(compareMonth) : 'отчетом недоступно'}.</p>
-        </div>
-      `;
-      wrapper.append(makeProgressTable(sheet, currentMonth, compareMonth));
-      elements.dayViews.append(wrapper);
-    });
+  Object.values(state.dashboard.reports).forEach((sheet) => {
+    if (!visibleExercises(sheet).length) return;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-card';
+    wrapper.innerHTML = `
+      <div class="table-card__header">
+        <h2>${sheet.title}</h2>
+        <p class="table-note">Сравнение ${getMonthLabel(currentMonth)} с ${compareMonth ? getMonthLabel(compareMonth) : 'отчетом недоступно'}.</p>
+      </div>
+    `;
+    wrapper.append(makeProgressTable(sheet, currentMonth, compareMonth));
+    elements.dayViews.append(wrapper);
+  });
 
   if (!elements.dayViews.children.length) {
     elements.dayViews.append(createEmpty('По текущим фильтрам нет упражнений для сравнения.'));
@@ -453,57 +525,321 @@ function renderFullReport() {
   elements.fullReport.innerHTML = '';
   const currentMonth = getSelectedCurrentMonth();
 
-  Object.values(state.dashboard.reports)
-    .forEach((sheet) => {
-      const exercises = visibleExercises(sheet);
-      if (!exercises.length) return;
+  Object.values(state.dashboard.reports).forEach((sheet) => {
+    const exercises = visibleExercises(sheet);
+    if (!exercises.length) return;
 
-      const dayBlock = document.createElement('div');
-      dayBlock.className = 'full-report__day';
+    const dayBlock = document.createElement('div');
+    dayBlock.className = 'full-report__day';
 
-      const title = document.createElement('div');
-      title.className = 'full-report__day-title';
-      title.innerHTML = `<h3>${sheet.title}</h3><p class="table-note">Полная история отчетов по упражнениям.</p>`;
-      dayBlock.append(title);
+    const title = document.createElement('div');
+    title.className = 'full-report__day-title';
+    title.innerHTML = `<h3>${sheet.title}</h3><p class="table-note">Полная история отчетов по упражнениям.</p>`;
+    dayBlock.append(title);
 
-      exercises.forEach((exercise) => {
-        const details = document.createElement('details');
-        details.className = 'report-details';
+    exercises.forEach((exercise) => {
+      const details = document.createElement('details');
+      details.className = 'report-details';
 
-        const entries = loggedEntries(exercise.entries);
-        const visibleEntries =
-          state.currentMonthFilter === 'latest' || state.currentMonthFilter === 'all'
-            ? entries
-            : entries.filter((entry) => Number(entry.month) === Number(currentMonth));
+      const entries = loggedEntries(exercise.entries);
+      const visibleEntries =
+        state.currentMonthFilter === 'latest'
+          ? entries
+          : entries.filter((entry) => Number(entry.month) === Number(currentMonth));
 
-        const latest = entries.at(-1);
-        const summary = document.createElement('summary');
-        summary.className = 'report-details__summary';
-        summary.innerHTML = `
-          <div>
-            <strong>${exercise.title}</strong>
-            <span class="muted">${latest ? `Последний итог: ${latest.summary || formatSets(latest.sets)}` : 'Нет отчетов'}</span>
-          </div>
-          <span class="badge">${visibleEntries.length} записей</span>
-        `;
-        details.append(summary);
+      const latest = entries.at(-1);
+      const summary = document.createElement('summary');
+      summary.className = 'report-details__summary';
+      summary.innerHTML = `
+        <div>
+          <strong>${exercise.title}</strong>
+          <span class="muted">${latest ? `Последний итог: ${latest.best_set || latest.summary || formatSets(latest.sets)}` : 'Нет отчетов'}</span>
+        </div>
+        <span class="badge">${visibleEntries.length} записей</span>
+      `;
+      details.append(summary);
 
-        const body = document.createElement('div');
-        body.className = 'report-details__body';
-        body.append(
-          visibleEntries.length
-            ? makeDetailedSetTable(visibleEntries)
-            : createEmpty('Для выбранного фильтра по этому упражнению нет записей.'),
-        );
-        details.append(body);
-        dayBlock.append(details);
-      });
-
-      elements.fullReport.append(dayBlock);
+      const body = document.createElement('div');
+      body.className = 'report-details__body';
+      body.append(
+        visibleEntries.length
+          ? makeDetailedSetTable(visibleEntries)
+          : createEmpty('Для выбранного фильтра по этому упражнению нет записей.'),
+      );
+      details.append(body);
+      dayBlock.append(details);
     });
+
+    elements.fullReport.append(dayBlock);
+  });
 
   if (!elements.fullReport.children.length) {
     elements.fullReport.append(createEmpty('По текущим фильтрам полный отчет пустой.'));
+  }
+}
+
+function getReportSheets() {
+  return Object.values(state.dashboard?.reports || {});
+}
+
+function syncAdminSelections() {
+  const sheets = getReportSheets();
+  if (!sheets.length) {
+    state.adminSheet = '';
+    state.adminExercise = '';
+    state.adminMonth = '';
+    return;
+  }
+
+  const sheetTitles = sheets.map((sheet) => sheet.title);
+  if (!sheetTitles.includes(state.adminSheet)) {
+    state.adminSheet = sheetTitles[0];
+  }
+
+  const activeSheet = sheets.find((sheet) => sheet.title === state.adminSheet) || sheets[0];
+  const exerciseTitles = activeSheet.exercises.map((exercise) => exercise.title);
+  if (!exerciseTitles.includes(state.adminExercise)) {
+    state.adminExercise = exerciseTitles[0] || '';
+  }
+
+  const activeExercise = activeSheet.exercises.find((exercise) => exercise.title === state.adminExercise);
+  const months = (activeExercise?.entries || [])
+    .map((entry) => Number(entry.month))
+    .filter((month) => Number.isFinite(month))
+    .sort((a, b) => a - b);
+
+  const preferredMonth = getSelectedCurrentMonth();
+  if (!months.map(String).includes(state.adminMonth)) {
+    state.adminMonth = months.includes(preferredMonth) ? String(preferredMonth) : String(months[0] || '');
+  }
+}
+
+function populateAdminControls() {
+  syncAdminSelections();
+  const sheets = getReportSheets();
+  const activeSheet = sheets.find((sheet) => sheet.title === state.adminSheet);
+  const activeExercise = activeSheet?.exercises.find((exercise) => exercise.title === state.adminExercise);
+
+  elements.adminSheetSelect.innerHTML = '';
+  sheets.forEach((sheet) => {
+    const option = document.createElement('option');
+    option.value = sheet.title;
+    option.textContent = sheet.title;
+    elements.adminSheetSelect.append(option);
+  });
+  elements.adminSheetSelect.value = state.adminSheet;
+
+  elements.adminExerciseSelect.innerHTML = '';
+  (activeSheet?.exercises || []).forEach((exercise) => {
+    const option = document.createElement('option');
+    option.value = exercise.title;
+    option.textContent = exercise.title;
+    elements.adminExerciseSelect.append(option);
+  });
+  elements.adminExerciseSelect.value = state.adminExercise;
+
+  elements.adminMonthSelect.innerHTML = '';
+  (activeExercise?.entries || []).forEach((entry) => {
+    const option = document.createElement('option');
+    option.value = String(entry.month);
+    option.textContent = getMonthLabel(entry.month);
+    elements.adminMonthSelect.append(option);
+  });
+  elements.adminMonthSelect.value = state.adminMonth;
+}
+
+function getActiveAdminExercise() {
+  const sheet = getReportSheets().find((item) => item.title === state.adminSheet);
+  return sheet?.exercises.find((item) => item.title === state.adminExercise) || null;
+}
+
+function getActiveAdminEntry() {
+  const exercise = getActiveAdminExercise();
+  if (!exercise || !state.adminMonth) return null;
+  return getEntryByMonth(exercise, Number(state.adminMonth), false);
+}
+
+function fillAdminSetInputs(entry) {
+  const sets = entry?.sets || [];
+  for (let index = 0; index < 4; index += 1) {
+    elements.adminWeightInputs[index].value = sets[index]?.weight ?? '';
+    elements.adminRepsInputs[index].value = sets[index]?.reps ?? '';
+  }
+  elements.adminNotesInput.value = entry?.notes || '';
+}
+
+function renderAdminForm() {
+  const entry = getActiveAdminEntry();
+  fillAdminSetInputs(entry);
+
+  if (!entry) {
+    elements.adminEntryMeta.innerHTML = '<div class="empty-state">Для этого упражнения нет строки месяца в Excel.</div>';
+    return;
+  }
+
+  const currentSummary = entry.logged ? entry.best_set || entry.summary || formatSets(entry.sets) : 'Пока пусто';
+  const currentStrength = entry.logged ? formatNumber(entry.estimated_1rm) : '—';
+
+  elements.adminEntryMeta.innerHTML = `
+    <div class="meta-box">
+      <div class="muted">Интервал месяца</div>
+      <strong>${entry.date || '—'}</strong>
+    </div>
+    <div class="meta-box">
+      <div class="muted">Сейчас в Excel</div>
+      <strong>${currentSummary}</strong>
+    </div>
+    <div class="meta-box">
+      <div class="muted">Текущий e1RM</div>
+      <strong>${currentStrength}</strong>
+    </div>
+  `;
+}
+
+function renderAdmin() {
+  const ready = Boolean(state.dashboard);
+  elements.adminLoginButton.disabled = !ready;
+  elements.adminSaveButton.disabled = !ready || !state.adminAuthenticated;
+  elements.adminResetButton.disabled = !ready || !state.adminAuthenticated;
+
+  if (!ready) {
+    elements.adminAuth.hidden = false;
+    elements.adminEditor.hidden = true;
+    return;
+  }
+
+  if (!state.adminAuthenticated) {
+    elements.adminAuth.hidden = false;
+    elements.adminEditor.hidden = true;
+    return;
+  }
+
+  elements.adminAuth.hidden = true;
+  elements.adminEditor.hidden = false;
+  populateAdminControls();
+  renderAdminForm();
+}
+
+function setAdminStatus(message, tone = 'muted') {
+  elements.adminStatus.className = `admin-state admin-state--${tone}`;
+  elements.adminStatus.textContent = message;
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || 'Запрос завершился ошибкой.');
+  }
+  return payload;
+}
+
+async function restoreAdminSession() {
+  if (!state.adminToken) {
+    state.adminAuthenticated = false;
+    renderAdmin();
+    return;
+  }
+
+  try {
+    await fetchJson('/api/admin/session', {
+      headers: {
+        Authorization: `Bearer ${state.adminToken}`,
+      },
+    });
+    state.adminAuthenticated = true;
+    setAdminStatus('Админ-режим включен. Можно вводить результаты прямо в Excel.', 'up');
+  } catch (error) {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    state.adminToken = null;
+    state.adminAuthenticated = false;
+    setAdminStatus('Сессия админа истекла. Войди еще раз по PIN.', 'flat');
+  }
+  renderAdmin();
+}
+
+async function loginAdmin() {
+  const pin = elements.adminPinInput.value.trim();
+  if (!pin) {
+    setAdminStatus('Введи PIN для входа в админку.', 'flat');
+    return;
+  }
+
+  elements.adminLoginButton.disabled = true;
+  elements.adminLoginButton.textContent = 'Проверяю...';
+
+  try {
+    const payload = await fetchJson('/api/admin/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ pin }),
+    });
+    state.adminToken = payload.token;
+    state.adminAuthenticated = true;
+    localStorage.setItem(ADMIN_TOKEN_KEY, payload.token);
+    elements.adminPinInput.value = '';
+    setAdminStatus('Вход выполнен. Форма сохранит данные прямо в программа.xlsx.', 'up');
+    renderAdmin();
+  } catch (error) {
+    state.adminAuthenticated = false;
+    setAdminStatus(error.message, 'down');
+    renderAdmin();
+  } finally {
+    elements.adminLoginButton.disabled = false;
+    elements.adminLoginButton.textContent = 'Войти';
+  }
+}
+
+function readAdminSets() {
+  return elements.adminWeightInputs.map((weightInput, index) => {
+    const repsInput = elements.adminRepsInputs[index];
+    const weight = weightInput.value === '' ? null : Number(weightInput.value);
+    const reps = repsInput.value === '' ? null : Number(repsInput.value);
+    return { weight, reps };
+  });
+}
+
+async function saveAdminEntry() {
+  const exercise = getActiveAdminExercise();
+  if (!exercise || !state.adminMonth) {
+    setAdminStatus('Не удалось определить упражнение или месяц для сохранения.', 'down');
+    return;
+  }
+
+  elements.adminSaveButton.disabled = true;
+  elements.adminSaveButton.textContent = 'Сохраняю...';
+
+  try {
+    await fetchJson('/api/admin/save-entry', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state.adminToken}`,
+      },
+      body: JSON.stringify({
+        sheet_name: state.adminSheet,
+        exercise_title: exercise.title,
+        month: Number(state.adminMonth),
+        sets: readAdminSets(),
+        notes: elements.adminNotesInput.value.trim() || null,
+      }),
+    });
+
+    await loadDashboard();
+    setAdminStatus(`Сохранено: ${exercise.title}, ${getMonthLabel(state.adminMonth)}. Отчет уже обновлен на экране.`, 'up');
+  } catch (error) {
+    if (error.message.includes('вход')) {
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
+      state.adminToken = null;
+      state.adminAuthenticated = false;
+      renderAdmin();
+    }
+    setAdminStatus(error.message, 'down');
+  } finally {
+    elements.adminSaveButton.disabled = false;
+    elements.adminSaveButton.textContent = 'Сохранить в Excel';
   }
 }
 
@@ -514,15 +850,14 @@ function render() {
   renderHeavyCards();
   renderDayViews();
   renderFullReport();
+  renderAdmin();
 }
 
 async function loadDashboard() {
   elements.refreshButton.disabled = true;
   elements.refreshButton.textContent = 'Читаю Excel...';
   try {
-    const response = await fetch('/api/dashboard');
-    if (!response.ok) throw new Error('Не удалось прочитать Excel');
-    state.dashboard = await response.json();
+    state.dashboard = await fetchJson('/api/dashboard');
     render();
   } catch (error) {
     console.error(error);
@@ -531,10 +866,16 @@ async function loadDashboard() {
     elements.summary.innerHTML = '';
     elements.fullReport.innerHTML = '';
     elements.dayViews.append(createEmpty('Не удалось загрузить данные из Excel. Проверь файл и перезапусти сервис.'));
+    renderAdmin();
   } finally {
     elements.refreshButton.disabled = false;
     elements.refreshButton.textContent = 'Обновить из Excel';
   }
 }
 
-loadDashboard();
+async function bootstrap() {
+  await loadDashboard();
+  await restoreAdminSession();
+}
+
+bootstrap();
