@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Тренировки — Прогресс</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Excel как база данных</p>
+          <h1>Отчеты по месяцам</h1>
+          <p class="subhead">
+            Сервис читает <code>программа.xlsx</code> и показывает только факт по контрольной
+            неделе месяца. Теории и целей больше нет.
+          </p>
+        </div>
+        <div class="controls">
+          <div class="control-grid">
+            <label class="control">
+              <span>Отчетный месяц</span>
+              <select id="currentMonthFilter">
+                <option value="latest" selected>Последний месяц</option>
+              </select>
+            </label>
+            <label class="control">
+              <span>Сравнить с</span>
+              <select id="compareMonthFilter">
+                <option value="previous" selected>Предыдущим месяцем</option>
+              </select>
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="expandAllButton" class="ghost-button">Раскрыть всё</button>
+            <button id="collapseAllButton" class="ghost-button">Свернуть всё</button>
+            <button id="refreshButton" class="ghost-button">Обновить из Excel</button>
+          </div>
+        </div>
+      </header>
+
+      <section id="summary" class="summary-grid"></section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Главные упражнения</h2>
+          <p>Здесь должен сразу читаться ответ, вырос ты или нет на тяжелых движениях.</p>
+        </div>
+        <div id="heavyCards" class="heavy-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Что выросло по дням</h2>
+          <p>Компактное сравнение прошлого и текущего отчета по всем упражнениям.</p>
+        </div>
+        <div id="dayViews" class="day-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Полный интерактивный отчет</h2>
+          <p>Здесь уже без сжатия: все упражнения, все месяцы и все подходы по каждому отчету.</p>
+        </div>
+        <div id="fullReport" class="full-report"></div>
+      </section>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
