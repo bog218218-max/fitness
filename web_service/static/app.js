@@ -21,6 +21,7 @@ const elements = {
   expandAllButton: document.getElementById('expandAllButton'),
   collapseAllButton: document.getElementById('collapseAllButton'),
   refreshButton: document.getElementById('refreshButton'),
+  adminShell: document.getElementById('adminShell'),
   adminStatus: document.getElementById('adminStatus'),
   adminAuth: document.getElementById('adminAuth'),
   adminEditor: document.getElementById('adminEditor'),
@@ -106,8 +107,8 @@ elements.adminLogoutButton.addEventListener('click', () => {
   state.adminToken = null;
   state.adminAuthenticated = false;
   elements.adminPinInput.value = '';
+  clearAdminStatus();
   renderAdmin();
-  setAdminStatus('Админ-режим выключен.', 'muted');
 });
 
 function formatNumber(value) {
@@ -419,6 +420,13 @@ function createEmpty(text) {
   return node;
 }
 
+function wrapTable(table) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'table-scroll';
+  wrapper.append(table);
+  return wrapper;
+}
+
 function makeDetailedSetTable(entries) {
   const table = document.createElement('table');
   table.className = 'entry-table';
@@ -455,7 +463,7 @@ function makeDetailedSetTable(entries) {
     table.append(row);
   });
 
-  return table;
+  return wrapTable(table);
 }
 
 function makeProgressTable(sheet, currentMonth, compareMonth) {
@@ -494,7 +502,7 @@ function makeProgressTable(sheet, currentMonth, compareMonth) {
     table.append(row);
   });
 
-  return table;
+  return wrapTable(table);
 }
 
 function renderDayViews() {
@@ -669,6 +677,7 @@ function fillAdminSetInputs(entry) {
 }
 
 function renderAdminForm() {
+  const exercise = getActiveAdminExercise();
   const entry = getActiveAdminEntry();
   fillAdminSetInputs(entry);
 
@@ -679,6 +688,8 @@ function renderAdminForm() {
 
   const currentSummary = entry.logged ? entry.best_set || entry.summary || formatSets(entry.sets) : 'Пока пусто';
   const currentStrength = entry.logged ? formatNumber(entry.estimated_1rm) : '—';
+  const targetRir = exercise?.target_rir || '—';
+  const loadType = exercise?.load_type || '—';
 
   elements.adminEntryMeta.innerHTML = `
     <div class="meta-box">
@@ -693,11 +704,17 @@ function renderAdminForm() {
       <div class="muted">Текущий e1RM</div>
       <strong>${currentStrength}</strong>
     </div>
+    <div class="meta-box">
+      <div class="muted">Плановый RIR</div>
+      <strong>${targetRir}</strong>
+      <span class="muted">${loadType}</span>
+    </div>
   `;
 }
 
 function renderAdmin() {
   const ready = Boolean(state.dashboard);
+  elements.adminShell.classList.toggle('admin-shell--open', ready && state.adminAuthenticated);
   elements.adminLoginButton.disabled = !ready;
   elements.adminSaveButton.disabled = !ready || !state.adminAuthenticated;
   elements.adminResetButton.disabled = !ready || !state.adminAuthenticated;
@@ -721,8 +738,14 @@ function renderAdmin() {
 }
 
 function setAdminStatus(message, tone = 'muted') {
+  const hasMessage = Boolean(message);
+  elements.adminStatus.hidden = !hasMessage;
   elements.adminStatus.className = `admin-state admin-state--${tone}`;
-  elements.adminStatus.textContent = message;
+  elements.adminStatus.textContent = hasMessage ? message : '';
+}
+
+function clearAdminStatus() {
+  setAdminStatus('');
 }
 
 async function fetchJson(url, options = {}) {
@@ -737,6 +760,7 @@ async function fetchJson(url, options = {}) {
 async function restoreAdminSession() {
   if (!state.adminToken) {
     state.adminAuthenticated = false;
+    clearAdminStatus();
     renderAdmin();
     return;
   }

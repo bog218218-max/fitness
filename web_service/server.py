@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import time
@@ -86,6 +87,11 @@ def normalize_text(value: Any) -> str | None:
     return str(value)
 
 
+def normalize_key(value: Any) -> str:
+    text = normalize_text(value) or ""
+    return re.sub(r"\s+", " ", text.replace("ё", "е").replace("Ё", "Е").strip().lower())
+
+
 def is_section_title(value: Any) -> bool:
     return isinstance(value, str) and "|" in value and not value.startswith("Дата")
 
@@ -119,6 +125,56 @@ def build_best_set(sets: list[SetData]) -> tuple[str | None, float | None]:
     return best_set, round(best_1rm, 1) if best_1rm is not None else None
 
 
+def parse_exercise_title(raw_title: str | None) -> dict[str, str | None]:
+    title = normalize_text(raw_title)
+    if not title:
+        return {"base_title": None, "prescription": None, "load_type": None}
+
+    base_title, _, tail = title.partition("|")
+    prescription = normalize_text(tail)
+    load_type = None
+    if prescription and "," in prescription:
+        _, _, load_fragment = prescription.rpartition(",")
+        load_type = normalize_text(load_fragment)
+
+    return {
+        "base_title": normalize_text(base_title),
+        "prescription": prescription,
+        "load_type": load_type,
+    }
+
+
+def parse_rir_label(value: Any) -> str | None:
+    text = normalize_text(value)
+    if not text:
+        return None
+    match = re.search(r"(\d+(?:\.\d+)?)", text)
+    return match.group(1) if match else text
+
+
+def build_rir_lookup(sheet) -> dict[str, str]:
+    rir_lookup: dict[str, str] = {}
+    for row_index in range(1, sheet.max_row + 1):
+        load_type = normalize_text(sheet.cell(row_index, 1).value)
+        if not load_type:
+            continue
+
+        weeks = [parse_rir_label(sheet.cell(row_index, column).value) for column in range(2, 6)]
+        weeks = [week for week in weeks if week]
+        if not weeks:
+            continue
+
+        rir_lookup[normalize_key(load_type)] = "→".join(weeks)
+    return rir_lookup
+
+
+def resolve_target_rir(exercise_title: str | None, rir_lookup: dict[str, str]) -> tuple[str | None, str | None, str | None]:
+    parsed = parse_exercise_title(exercise_title)
+    load_type = parsed["load_type"]
+    target_rir = rir_lookup.get(normalize_key(load_type)) if load_type else None
+    return parsed["base_title"], parsed["prescription"], target_rir
+
+
 def parse_entry(row: list[Any]) -> EntryData:
     month_value = row[1]
     month = month_value if isinstance(month_value, str) else normalize_number(month_value)
@@ -147,7 +203,7 @@ def parse_entry(row: list[Any]) -> EntryData:
     )
 
 
-def parse_structured_sheet(sheet) -> dict[str, Any]:
+def parse_structured_sheet(sheet, rir_lookup: dict[str, str]) -> dict[str, Any]:
     section_rows = [
         row_index
         for row_index in range(1, sheet.max_row + 1)
@@ -158,6 +214,8 @@ def parse_structured_sheet(sheet) -> dict[str, Any]:
     for index, section_row in enumerate(section_rows):
         next_section = section_rows[index + 1] if index + 1 < len(section_rows) else sheet.max_row + 1
         title = normalize_text(sheet.cell(section_row, 1).value)
+        base_title, prescription, target_rir = resolve_target_rir(title, rir_lookup)
+        load_type = parse_exercise_title(title)["load_type"]
         entries: list[EntryData] = []
         for row_index in range(section_row + 2, next_section):
             row = [sheet.cell(row_index, column).value for column in range(1, 17)]
@@ -166,17 +224,27 @@ def parse_structured_sheet(sheet) -> dict[str, Any]:
             if row[0] == "Дата":
                 continue
             entries.append(parse_entry(row))
-        exercises.append({"title": title, "entries": [asdict(entry) for entry in entries]})
+        exercises.append(
+            {
+                "title": title,
+                "base_title": base_title,
+                "prescription": prescription,
+                "load_type": load_type,
+                "target_rir": target_rir,
+                "entries": [asdict(entry) for entry in entries],
+            }
+        )
     return {"title": sheet.title, "exercises": exercises}
 
 
 def load_dashboard() -> dict[str, Any]:
     with WORKBOOK_LOCK:
         workbook = load_workbook(WORKBOOK_PATH, data_only=True)
+        rir_lookup = build_rir_lookup(workbook["RIR и прогрессия"]) if "RIR и прогрессия" in workbook.sheetnames else {}
         reports = {}
         for sheet_name in workbook.sheetnames:
             if "Отчет" in sheet_name:
-                reports[sheet_name] = parse_structured_sheet(workbook[sheet_name])
+                reports[sheet_name] = parse_structured_sheet(workbook[sheet_name], rir_lookup)
         workbook.close()
 
     stat = WORKBOOK_PATH.stat()
@@ -342,6 +410,12 @@ def save_report_entry(payload: dict[str, Any]) -> dict[str, Any]:
 class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)

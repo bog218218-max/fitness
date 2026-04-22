@@ -42,11 +42,10 @@
 
       <section class="panel admin-panel">
         <div class="panel-header">
-          <h2>Админка ввода</h2>
-          <p>С телефона можно войти по PIN, вбить рабочие подходы и сразу сохранить их в Excel.</p>
+          <h2>Доступ к админке</h2>
         </div>
-        <div class="admin-shell">
-          <div id="adminStatus" class="admin-state admin-state--muted">Админ-режим выключен.</div>
+        <div id="adminShell" class="admin-shell">
+          <div id="adminStatus" class="admin-state admin-state--muted" hidden></div>
 
           <div id="adminAuth" class="admin-auth">
             <label class="control">
@@ -56,7 +55,6 @@
                 type="password"
                 inputmode="numeric"
                 autocomplete="current-password"
-                placeholder="1111"
               />
             </label>
             <button id="adminLoginButton" class="primary-button">Войти</button>
